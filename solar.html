@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Solar System with Galaxy Background</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+        }
+
+        canvas {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .info-panel {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            font-family: 'Arial', sans-serif;
+            display: none;
+            max-width: 300px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 1000;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 25px;
+            display: flex;
+            gap: 15px;
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+        }
+
+        .control-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <div id="info-panel" class="info-panel">
+        <h2 id="planet-name"></h2>
+        <p id="planet-info"></p>
+    </div>
+    <div class="controls">
+        <button class="control-btn" id="toggle-orbit">Toggle Orbits</button>
+        <button class="control-btn" id="toggle-rotation">Toggle Rotation</button>
+        <button class="control-btn" id="toggle-labels">Toggle Labels</button>
+        <button class="control-btn" id="toggle-stars">Toggle Stars</button>
+    </div>
+
+    <script>
+        let scene, camera, renderer, planets = {}, starField, galaxyField;
+        let isRotating = true;
+        let showOrbits = true;
+
+        const planetData = {
+            Mercury: {
+                radius: 0.38,
+                orbitRadius: 5,
+                speed: 0.04,
+                color: 0x808080,
+                info: "Mercury is the smallest and innermost planet in the Solar System."
+            },
+            Venus: {
+                radius: 0.95,
+                orbitRadius: 7,
+                speed: 0.015,
+                color: 0xffd700,
+                info: "Venus is the second planet from the Sun and the hottest planet in our solar system."
+            },
+            Earth: {
+                radius: 1,
+                orbitRadius: 10,
+                speed: 0.01,
+                color: 0x0077be,
+                info: "Earth is our home planet and the only known planet to harbor life."
+            },
+            Mars: {
+                radius: 0.53,
+                orbitRadius: 15,
+                speed: 0.008,
+                color: 0xff4500,
+                info: "Mars is often called the Red Planet due to its reddish appearance."
+            }
+        };
+
+        function createStarField() {
+            const starsGeometry = new THREE.BufferGeometry();
+            const starsMaterial = new THREE.PointsMaterial({
+                color: 0xFFFFFF,
+                size: 0.1,
+                transparent: true
+            });
+
+            const starsVertices = [];
+            for(let i = 0; i < 10000; i++) {
+                const x = (Math.random() - 0.5) * 2000;
+                const y = (Math.random() - 0.5) * 2000;
+                const z = (Math.random() - 0.5) * 2000;
+                starsVertices.push(x, y, z);
+            }
+
+            starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starsVertices, 3));
+            return new THREE.Points(starsGeometry, starsMaterial);
+        }
+
+        function createGalaxyField() {
+            const galaxyGeometry = new THREE.BufferGeometry();
+            const galaxyMaterial = new THREE.PointsMaterial({
+                color: 0x8866ff,
+                size: 0.2,
+                transparent: true,
+                blending: THREE.AdditiveBlending
+            });
+
+            const galaxyVertices = [];
+            const galaxyColors = [];
+            const colorPalette = [0x8866ff, 0xff6688, 0x44aaff];
+
+            for(let i = 0; i < 5000; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const radius = Math.random() * 100 + 50;
+                const x = Math.cos(angle) * radius;
+                const z = Math.sin(angle) * radius;
+                const y = (Math.random() - 0.5) * 20;
+                
+                galaxyVertices.push(x, y, z);
+
+                const color = new THREE.Color(colorPalette[Math.floor(Math.random() * colorPalette.length)]);
+                galaxyColors.push(color.r, color.g, color.b);
+            }
+
+            galaxyGeometry.setAttribute('position', new THREE.Float32BufferAttribute(galaxyVertices, 3));
+            galaxyGeometry.setAttribute('color', new THREE.Float32BufferAttribute(galaxyColors, 3));
+            
+            return new THREE.Points(galaxyGeometry, galaxyMaterial);
+        }
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // Add star field
+            starField = createStarField();
+            scene.add(starField);
+
+            // Add galaxy field
+            galaxyField = createGalaxyField();
+            scene.add(galaxyField);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0x333333);
+            scene.add(ambientLight);
+            
+            const sunLight = new THREE.PointLight(0xffffff, 2, 300);
+            scene.add(sunLight);
+
+            // Sun with glow effect
+            const sunGeometry = new THREE.SphereGeometry(3, 32, 32);
+            const sunMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffff00,
+                emissive: 0xffff00
+            });
+            const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+            
+            // Sun glow
+            const spriteMaterial = new THREE.SpriteMaterial({
+                map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAABASURBVChTY/z//z8DGmBkZKQAUwAWwAUYQQpgAF0BE0ghskJkxWBFIIVgRSBArAJkxWBFIIVgRSCArhBZMV4FAO1XFAHh9CnWAAAAAElFTkSuQmCC'),
+                color: 0xffff00,
+                transparent: true,
+                blending: THREE.AdditiveBlending
+            });
+            const sunGlow = new THREE.Sprite(spriteMaterial);
+            sunGlow.scale.set(10, 10, 1);
+            sun.add(sunGlow);
+            scene.add(sun);
+
+            // Create planets
+            Object.entries(planetData).forEach(([name, data]) => {
+                const planet = createPlanet(data.radius, data.color);
+                planets[name] = {
+                    mesh: planet,
+                    orbit: data.orbitRadius,
+                    speed: data.speed,
+                    angle: Math.random() * Math.PI * 2
+                };
+                scene.add(planet);
+
+                // Create orbit line
+                const orbitGeometry = new THREE.RingGeometry(data.orbitRadius - 0.1, data.orbitRadius + 0.1, 64);
+                const orbitMaterial = new THREE.MeshBasicMaterial({
+                    color: 0x444444,
+                    side: THREE.DoubleSide,
+                    transparent: true,
+                    opacity: 0.5
+                });
+                const orbitLine = new THREE.Mesh(orbitGeometry, orbitMaterial);
+                orbitLine.rotation.x = Math.PI / 2;
+                scene.add(orbitLine);
+                planets[name].orbitLine = orbitLine;
+            });
+
+            camera.position.z = 30;
+            camera.position.y = 20;
+            camera.lookAt(0, 0, 0);
+
+            // Event Listeners
+            window.addEventListener('resize', onWindowResize, false);
+            renderer.domElement.addEventListener('mousemove', onMouseMove);
+            
+            document.getElementById('toggle-orbit').addEventListener('click', () => {
+                showOrbits = !showOrbits;
+                Object.values(planets).forEach(planet => {
+                    planet.orbitLine.visible = showOrbits;
+                });
+            });
+
+            document.getElementById('toggle-rotation').addEventListener('click', () => {
+                isRotating = !isRotating;
+            });
+
+            document.getElementById('toggle-stars').addEventListener('click', () => {
+                starField.visible = !starField.visible;
+                galaxyField.visible = !galaxyField.visible;
+            });
+        }
+
+        function createPlanet(radius, color) {
+            const geometry = new THREE.SphereGeometry(radius, 32, 32);
+            const material = new THREE.MeshPhongMaterial({
+                color: color,
+                shininess: 30
+            });
+            return new THREE.Mesh(geometry, material);
+        }
+
+        function onMouseMove(event) {
+            const raycaster = new THREE.Raycaster();
+            const mouse = new THREE.Vector2(
+                (event.clientX / window.innerWidth) * 2 - 1,
+                -(event.clientY / window.innerHeight) * 2 + 1
+            );
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(Object.values(planets).map(p => p.mesh));
+
+            if (intersects.length > 0) {
+                const planetName = Object.keys(planets).find(key => planets[key].mesh === intersects[0].object);
+                showPlanetInfo(planetName);
+            } else {
+                hidePlanetInfo();
+            }
+        }
+
+        function showPlanetInfo(planetName) {
+            const panel = document.getElementById('info-panel');
+            document.getElementById('planet-name').textContent = planetName;
+            document.getElementById('planet-info').textContent = planetData[planetName].info;
+            panel.style.display = 'block';
+        }
+
+        function hidePlanetInfo() {
+            document.getElementById('info-panel').style.display = 'none';
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (isRotating) {
+                Object.entries(planets).forEach(([name, planet]) => {
+                    planet.angle += planet.speed;
+                    planet.mesh.position.x = Math.cos(planet.angle) * planet.orbit;
+                    planet.mesh.position.z = Math.sin(planet.angle) * planet.orbit;
+                    planet.mesh.rotation.y += 0.01;
+                });
+
+                // Rotate galaxy field slowly
+                if (galaxyField) {
+                    galaxyField.rotation.y += 0.0001;
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        init();
+        animate();
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
